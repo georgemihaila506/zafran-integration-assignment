@@ -1,12 +1,11 @@
-# Example Starlark integration script
-# This demonstrates how to collect instances and vulnerabilities using the proto API
-#
 # Structure:
 #   - main: Entry point that orchestrates the integration
-#   - get_bearer_token: (Optional) Gets a bearer token from OAuth endpoint
+#   - get_bearer_token: Gets a bearer token from OAuth endpoint
 #   - fetch_paginated: Helper to fetch data with pagination support
 #   - fetch_instances: Fetches raw instance/asset data from the API
 #   - fetch_vulnerabilities: Fetches raw vulnerability data from the API
+#   - fetch_device_ids: Fetch Device IDs from the API
+#   - fetch_device_details: Fetch device details from the API using the device IDs
 #   - parse_to_instance: Transforms raw asset data into InstanceData proto
 #   - parse_to_finding: Transforms raw vulnerability data into Vulnerability proto
 #
