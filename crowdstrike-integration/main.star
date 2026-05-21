@@ -2,8 +2,8 @@
 #
 # Structure:
 #   - main: Entry point that orchestrates the integration
-#   - get_bearer_token: Gets a bearer token from OAuth endpoint
-#   - fetch_paginated: Helper to fetch data with pagination support
+#   - get_bearer_token: Gets a bearer token from OAuth2 endpoint
+#   - fetch_paginated: Helper to fetch data with scroll pagination
 #   - fetch_instances: Fetches raw instance/asset data from the API
 #   - fetch_vulnerabilities: Fetches raw vulnerability data from the API
 #   - fetch_device_ids: Fetch Device IDs from the API
@@ -23,12 +23,12 @@ load("zafran", "zafran")
 
 def main(**kwargs):
     """
-    Main function for the integration.
+    Main function for the Crowdstrike integration.
 
     Accepts parameters:
     - api_url: Base URL of the API
-    - api_key: API authentication key (used directly or for token exchange)
-    - api_secret: API secret (optional, for OAuth token exchange)
+    - api_key: OAuth2 Client ID
+    - api_secret: OAuth2 Client Secret 
     - page_size: Number of items per page for pagination (optional, default 100)
     """
 
@@ -105,13 +105,12 @@ def main(**kwargs):
 
 def get_bearer_token(api_url, client_id, client_secret):
     """
-    Get a bearer token from an OAuth endpoint.
-    This function exchanges client credentials for an access token.
+    Authenticate with CrowdStrike OAuth2 and return a bearer token.
 
     Args:
-        api_url: Base URL of the API
-        client_id: OAuth client ID (often the api_key)
-        client_secret: OAuth client secret
+        api_url: CrowdStrike API base URL
+        client_id: OAuth2 Client ID
+        client_secret: OAuth2 Client Secret
 
     Returns:
         Bearer token string, or None if failed
@@ -138,12 +137,20 @@ def get_bearer_token(api_url, client_id, client_secret):
     return token_data.get("access_token", "")
 
 
+def get_auth_headers(bearer_token):
+    """
+    Build the authorization headers for API requests.
+    """
+    return {
+        "Authorization": "Bearer " + bearer_token,
+        "Content-Type": "application/json"
+    }
+
+
 def fetch_paginated(url, bearer_token, page_size=100, items_key="resources"):
     """
-    Fetch all data from a paginated API endpoint.
-
-    Supports common pagination patterns:
-    - Automatically fetches all pages until no more data
+    Fetch all data from a paginated API endpoint using CrowdStrike's
+    token-basel scroll pagination.
 
     Args:
         url: API endpoint URL (without pagination params)
@@ -154,11 +161,7 @@ def fetch_paginated(url, bearer_token, page_size=100, items_key="resources"):
     Returns:
         List of all items across all pages
     """
-    headers = {
-        "Authorization": "Bearer " + bearer_token,
-        "Content-Type": "application/json"
-    }
-
+    headers = get_auth_headers(bearer_token)
     all_items = []
     offset = ""
 
@@ -213,11 +216,7 @@ def fetch_device_details(api_url, bearer_token, device_ids):
     """
     Fetch device objects in batches of 100 given a list of IDs.
     """
-    headers = {
-        "Authorization": "Bearer " + bearer_token,
-        "Accept": "application/json"
-    }
-
+    headers = get_auth_headers(bearer_token)
     devices = []
     batch_size = 100
 
@@ -255,7 +254,7 @@ def fetch_instances(api_url, bearer_token, page_size=100):
     if not device_ids:
         return []
 
-    log.info("Total device IDs found: ", len(device_ids))
+    log.info("Total device IDs found: %d" % len(device_ids))
 
     devices = fetch_device_details(api_url, bearer_token, device_ids)
     log.info("Fetched details for %d devices" % len(devices))
@@ -275,10 +274,7 @@ def fetch_vulnerabilities(api_url, bearer_token, page_size=100):
     Returns:
         List of raw vulnerability dicts from the API
     """
-    headers = {
-        "Authorization": "Bearer " + bearer_token,
-        "Accept": "application/json"
-    }
+    headers = get_auth_headers(bearer_token)
     all_vulnerabilites = []
     after = ""
 
@@ -366,6 +362,12 @@ def parse_to_instance(raw_instance, pb):
             value=instance_id,
         ),
     ]
+    if raw_instance.get("serial_number"):
+        identifiers.append(pb.InstanceIdentifier(
+            key=pb.IdentifierType.SERIAL_NUMBER,
+            value=raw_instance["serial_number"]
+            )
+        )
 
     instance = pb.InstanceData(
         instance_id=instance_id,
