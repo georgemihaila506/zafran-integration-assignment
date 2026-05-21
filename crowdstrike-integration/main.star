@@ -29,14 +29,14 @@ def main(**kwargs):
     - api_url: Base URL of the API
     - api_key: OAuth2 Client ID
     - api_secret: OAuth2 Client Secret 
-    - page_size: Number of items per page for pagination (optional, default 100)
+    - page_size: Number of items per page for pagination (optional, default 50)
     """
 
     # Get parameters with defaults
     api_url = kwargs.get("api_url", "https://api.crowdstrike.com")
     api_key = kwargs.get("api_key", "")
     api_secret = kwargs.get("api_secret", "")
-    page_size = int(kwargs.get("page_size", "100"))
+    page_size = int(kwargs.get("page_size", "50"))
 
     log.info("Starting integration with API:", api_url)
 
@@ -69,12 +69,8 @@ def main(**kwargs):
             zafran.collect_instance(instance)
             log.info("Collected instance:", instance.name)
 
-    zafran.flush()
-    log.info("Flushed instances")
 
     # Step 3: Fetch and collect vulnerabilities for each instance
-    # Note: We collect vulns with their instances before flushing to ensure
-    # vulnerabilities are associated with their instances
     log.info("Step 3: Fetching vulnerabilities...")
     raw_vulnerabilities = fetch_vulnerabilities(api_url, bearer_token, page_size)
 
@@ -214,15 +210,15 @@ def fetch_device_ids(api_url, bearer_token, page_size=100):
 
 def fetch_device_details(api_url, bearer_token, device_ids):
     """
-    Fetch device objects in batches of 100 given a list of IDs.
+    Fetch device objects in batches of 50 given a list of IDs.
     """
     headers = get_auth_headers(bearer_token)
     devices = []
-    batch_size = 100
+    batch_size = 50
 
     for i in range(0, len(device_ids), batch_size):
         batch = device_ids[i:i + batch_size]
-        ids = "&".join(["ids=" + id for id in batch])
+        ids = "&".join(["ids=" + _id for _id in batch])
         url = api_url + "/devices/entities/devices/v2?" + ids
         log.info(url)
 
@@ -281,7 +277,7 @@ def fetch_vulnerabilities(api_url, bearer_token, page_size=100):
     while True:
         url = api_url.rstrip("/") + "/spotlight/combined/vulnerabilities/v1"
         url += "?filter=status:'open'"
-        url += "&facet=cve&facet=host_info&facet=remediation"
+        url += "&facet=host_info"
         url += "&limit=%d" % page_size
         if after:
             url += "&after=" + after
@@ -348,6 +344,9 @@ def parse_to_instance(raw_instance, pb):
         if len(parts) == 2 and parts[1]:
             key_value_tags.append(pb.InstanceTagKeyValue(key=parts[0], value=parts[1]))
 
+    if raw_instance.get("service_provider"):
+        key_value_tags.append(pb.InstanceTagKeyValue(key="service_provider", value=raw_instance["service_provider"]))
+
     # Labels
     labels = []
     if raw_instance.get("product_type_desc"):
@@ -365,9 +364,13 @@ def parse_to_instance(raw_instance, pb):
     if raw_instance.get("serial_number"):
         identifiers.append(pb.InstanceIdentifier(
             key=pb.IdentifierType.SERIAL_NUMBER,
-            value=raw_instance["serial_number"]
-            )
-        )
+            value=raw_instance["serial_number"],
+        ))
+    if raw_instance.get("instance_id"):
+        identifiers.append(pb.InstanceIdentifier(
+            key=pb.IdentifierType.AWS_EC2_INSTANCE_ID,
+            value=raw_instance["instance_id"],
+        ))
 
     instance = pb.InstanceData(
         instance_id=instance_id,
@@ -395,28 +398,11 @@ def parse_to_finding(raw_vuln, pb):
         log.warn("Vulnerability missing aid, skipping")
         return None
 
-    # CVE info (nested under "cve" facet)
     cve_data = raw_vuln.get("cve", {})
     cve_id = cve_data.get("id", "")
-
     if not cve_id:
         log.warn("Vulnerability missing cve.id, skipping")
         return None
-
-    description = cve_data.get("description", "")
-    severity = cve_data.get("severity", "")
-
-    # CVSS
-    cvss_list = []
-    base_score = cve_data.get("base_score", 0)
-    vector = cve_data.get("vector", "")
-    if base_score and vector:
-        cvss_list.append(pb.CVSS(
-            base_score=float(base_score),
-            vector=vector,
-            version="3.0",
-            source="crowdstrike",
-        ))
 
     # Component from apps
     component = None
@@ -426,38 +412,16 @@ def parse_to_finding(raw_vuln, pb):
         component = pb.Component(
             type=pb.ComponentType.APPLICATION,
             product=app.get("product_name_version", ""),
-            vendor=app.get("vendor", ""),
-            version=app.get("version", ""),
+            vendor=app.get("vendor_normalized", ""),
         )
 
-    # Remediation
-    remediation = None
-    remediation_data = raw_vuln.get("remediation", {})
-    if remediation_data:
-        action = remediation_data.get("action", "")
-        if not action:
-            action = remediation_data.get("description", "")
-        if action:
-            remediation = pb.Remediation(
-                suggestion=action,
-                source="CrowdStrike Spotlight",
-            )
-
-    # Build vulnerability using dict to avoid passing None values
     vuln_fields = {
         "instance_id": instance_id,
         "cve": cve_id,
-        "description": description,
-        "CVSS": cvss_list,
     }
 
-    if severity:
-        vuln_fields["severity"] = severity.lower()
     if component:
         vuln_fields["component"] = component
-    if remediation:
-        vuln_fields["remediation"] = remediation
 
     vulnerability = pb.Vulnerability(**vuln_fields)
-
     return vulnerability
