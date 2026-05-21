@@ -1,3 +1,5 @@
+# Pull assets and vulnerabilities from CrowdStrike into Zafran
+#
 # Structure:
 #   - main: Entry point that orchestrates the integration
 #   - get_bearer_token: Gets a bearer token from OAuth endpoint
@@ -27,15 +29,13 @@ def main(**kwargs):
     - api_url: Base URL of the API
     - api_key: API authentication key (used directly or for token exchange)
     - api_secret: API secret (optional, for OAuth token exchange)
-    - use_oauth: Set to "true" to use OAuth token exchange (optional)
     - page_size: Number of items per page for pagination (optional, default 100)
     """
 
     # Get parameters with defaults
-    api_url = kwargs.get("api_url", "https://api.example.com")
+    api_url = kwargs.get("api_url", "https://api.crowdstrike.com")
     api_key = kwargs.get("api_key", "")
     api_secret = kwargs.get("api_secret", "")
-    use_oauth = kwargs.get("use_oauth", "false")
     page_size = int(kwargs.get("page_size", "100"))
 
     log.info("Starting integration with API:", api_url)
@@ -106,9 +106,7 @@ def main(**kwargs):
 def get_bearer_token(api_url, client_id, client_secret):
     """
     Get a bearer token from an OAuth endpoint.
-
     This function exchanges client credentials for an access token.
-    Modify the endpoint and payload based on your API's OAuth implementation.
 
     Args:
         api_url: Base URL of the API
@@ -145,7 +143,6 @@ def fetch_paginated(url, bearer_token, page_size=100, items_key="resources"):
     Fetch all data from a paginated API endpoint.
 
     Supports common pagination patterns:
-    - offset/limit based pagination
     - Automatically fetches all pages until no more data
 
     Args:
