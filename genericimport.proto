@@ -1,0 +1,393 @@
+syntax = "proto3";
+
+package zafran.starlark;
+
+option go_package = "zafran.io/collection/clients/interfaces/genericimport";
+
+import "google/protobuf/timestamp.proto";
+
+// Enum definitions
+enum IdentifierType {
+  IDENTIFIER_TYPE_UNSPECIFIED = 0;
+  AWS_EC2_INSTANCE_ID = 1;
+  AZURE_VM_ID = 2;
+  AZURE_RESOURCE_ID = 3;
+  AZURE_AD_DEVICE_ID = 4;
+  WINDOWS_CS_UUID = 5;
+  LINUX_UUID = 6;
+  SERIAL_NUMBER = 7;
+  TENABLE_UUID = 8;
+  CROWDSTRIKE_AID = 9;
+  REPO_NAME = 10;
+  ILLUMIO_AGENT_UUID = 11;
+  QUALYS_AGENT_ID = 12;
+}
+
+enum InstancePropertyType {
+  INSTANCE_PROPERTY_TYPE_UNSPECIFIED = 0;
+  STRING = 1;
+  INT = 2;
+  FLOAT = 3;
+  BOOL = 4;
+  DATETIME = 5;
+}
+
+enum ComponentType {
+  COMPONENT_TYPE_UNSPECIFIED = 0;
+  APPLICATION = 1;
+  CONTAINER = 2;
+  CRYPTOGRAPHIC_ASSET = 3;
+  DATA = 4;
+  DEVICE = 5;
+  DEVICE_DRIVER = 6;
+  FILE = 7;
+  FIRMWARE = 8;
+  FRAMEWORK = 9;
+  LIBRARY = 10;
+  MACHINE_LEARNING_MODEL = 11;
+  OPERATING_SYSTEM = 12;
+  PLATFORM = 13;
+}
+
+enum InstanceType {
+  INSTANCE_TYPE_UNKNOWN = 0;
+  INSTANCE_TYPE_MACHINE = 1;
+  INSTANCE_TYPE_CONTAINER_IMAGE = 2;
+  INSTANCE_TYPE_SERVERLESS = 3;
+  INSTANCE_TYPE_MOBILE_DEVICE = 4;
+  INSTANCE_TYPE_NETWORK_DEVICE = 5;
+  INSTANCE_TYPE_OT_IOT_DEVICE = 6;
+  INSTANCE_TYPE_DATA_STORE = 7;
+  INSTANCE_TYPE_CODE_PROJECT = 8;
+  INSTANCE_TYPE_WEB_APP_API = 9;
+}
+
+// Instance data structures
+message InstanceIdentifier {
+  IdentifierType key = 1;
+  string value = 2;
+}
+
+message InstancePropertyValue {
+  string value = 1;
+  InstancePropertyType type = 2;
+  repeated string values = 3;
+}
+
+message AssetInstanceInformation {
+  repeated string ip_addresses = 1;
+  repeated string mac_addresses = 2;
+}
+
+message InetEvidence {
+  google.protobuf.Timestamp first_seen = 1;
+  google.protobuf.Timestamp last_seen = 2;
+  string evidence_string = 3;
+  string source = 4;         // Optional: defaults to "third_party" if empty
+  string evidence_type = 5;  // Optional: defaults to "third_party_evidence" if empty
+}
+
+message InstanceTagKeyValue {
+  string key = 1;
+  string value = 2;
+}
+
+message InstanceLabel {
+  string label = 1;
+}
+
+message InstanceTag {
+  oneof tag {
+    InstanceTagKeyValue key_value = 1;
+    InstanceLabel label = 2;
+  }
+}
+
+message InstanceData {
+  string instance_id = 1;
+  string name = 2;
+  AssetInstanceInformation asset_information = 3;
+  string operating_system = 4;
+  repeated InstanceIdentifier identifiers = 5;
+  map<string, InstancePropertyValue> instance_properties = 6;
+  InetEvidence inet_evidence = 7;
+  repeated InstanceTag tags = 8 [deprecated = true];
+  google.protobuf.Timestamp source_last_seen = 9;
+  repeated SBOMComponent sbom_components = 10;
+  repeated InstanceLabel labels = 11;
+  repeated InstanceTagKeyValue key_value_tags = 12;
+  InstanceType instance_type = 13;
+  repeated string control_ids = 14;  // IDs of controls to link to this instance (unique per integration)
+  ControlType control_type = 15; // required when control ids are specified
+  string raw_response = 16; // Optional: raw HTTP response body returned by the API before parsing
+  string hostname = 17; // Optional: short hostname or FQDN. Used as an identifier for asset deduplication — prefer setting this to the most stable network identity of the instance (e.g. FQDN) when available.
+
+  // Per-instance runtime data — flows into NormalizedRawScan.Processes
+  // alongside the in_runtime synthetic processes built from vulnerabilities.
+  repeated Process processes = 18;
+}
+
+// SBOM Component for standalone software inventory
+message SBOMComponent {
+  Component component = 1;
+  repeated string file_paths = 2;
+  map<string, string> dynamic_properties = 3; // Custom key-value metadata from the integration
+}
+
+// Vulnerability data structures
+message Component {
+  ComponentType type = 1;
+  string product = 2;
+  string vendor = 3;
+  string version = 4;
+  string display_name = 5;
+}
+
+message Remediation {
+  string suggestion = 1;
+  string source = 2;
+  string fixed_in_version = 3; // Version in which the vulnerability is fixed
+}
+
+message CVSS {
+  string version = 1;
+  string vector = 2;
+  double base_score = 3;
+  string source = 4; // Source of the CVSS score (e.g., "nvd", "vendor")
+  string type = 5; // Type of CVSS (e.g., "primary", "secondary")
+}
+
+// VulnerabilitySource links a finding back to its identity in the originating scanner.
+// Populating this enables filtering by original_source_id in the UI and powers
+// remediation/work-item linking workflows (same pipeline as native integrations).
+message VulnerabilitySource {
+  string source = 1;       // ProductId string (e.g. "defectdojo", "ermetic"). Falls back to integration product ID when empty.
+  string source_key = 2;   // Identifier type (e.g. "defectdojo_finding_id", "ermetic_policy_name")
+  string source_value = 3; // Actual ID value from the scanner
+}
+
+message Vulnerability {
+  string instance_id = 1;
+  string cve = 2;
+  bool in_runtime = 3;
+  Component component = 4;
+  Remediation remediation = 5;
+  repeated CVSS CVSS = 6;
+  repeated int64 cwe_ids = 7;
+  string description = 8;
+  google.protobuf.Timestamp first_observed = 9;
+  google.protobuf.Timestamp last_observed = 10;
+  repeated string file_paths = 11;
+  // ScannerSource fields
+  string scanner_id = 12; // Original finding ID from the scanner (e.g., "QID-86516")
+  string external_url = 13; // URL to the finding in the scanner
+  string references_url = 14; // Reference URL for the vulnerability
+  string scanner_name = 15; // Name/title from the scanner
+  // Additional metadata
+  string severity = 16; // Severity level (e.g., "critical", "high", "medium", "low")
+  map<string, string> dynamic_properties = 17; // Scanner-specific key-value metadata (e.g., detection score, result text)
+  string raw_response = 18; // Raw HTTP response body returned by the API before parsing
+  repeated VulnerabilitySource vulnerability_sources = 19; // Scanner-specific finding identities for original_source_id filtering and remediation linking
+}
+
+// Control type enum - matches db interfaces ControlType
+enum ControlType {
+  CONTROL_TYPE_UNSPECIFIED = 0;
+  CONTROL_TYPE_EDR = 1;
+  CONTROL_TYPE_FIREWALL = 2;
+  CONTROL_TYPE_WAF = 3;
+  CONTROL_TYPE_CSPM = 4;
+  CONTROL_TYPE_ENDPOINT_MANAGEMENT = 5;
+  CONTROL_TYPE_ANTIVIRUS = 6;
+  CONTROL_TYPE_WAP = 7;
+  CONTROL_TYPE_DATA_ACCESS_GOVERNANCE = 8;
+  CONTROL_TYPE_IDS = 9;
+  CONTROL_TYPE_PRIVILEGE_MANAGEMENT = 10;
+  CONTROL_TYPE_VPN = 11;
+  CONTROL_TYPE_AUTHENTICATION = 12;
+  CONTROL_TYPE_ITDR = 13;
+  CONTROL_TYPE_EMAIL_SECURITY = 14;
+  CONTROL_TYPE_CNAPP = 15;
+  CONTROL_TYPE_OPERATING_SYSTEM = 16;
+}
+
+// Feature action enum for control feature configuration
+enum FeatureAction {
+  FEATURE_ACTION_UNSPECIFIED = 0;
+  FEATURE_ACTION_ALERT = 1;
+  FEATURE_ACTION_BLOCK = 2;
+  FEATURE_ACTION_ALLOW = 3;
+}
+
+// Control data for collection and linking to instances
+// Controls are upserted based on (tenant_id, integration_id, control_id) - the actual DB control name
+// is constructed as "{integration_id}_{control_id}" to ensure uniqueness per tenant.
+message ControlData {
+  string control_id = 1;        // Unique control identifier within this integration (required)
+  ControlType type = 2;         // Control type enum
+  string display_name = 3;      // Human-readable display name
+  string params = 4;            // Optional JSON params (max 64KB enforced)
+  repeated ControlFeatureData features = 5;  // Control features/settings
+}
+
+message ControlFeatureData {
+  string feature_name = 1;      // Unique feature identifier
+  string display_name = 2;      // Human-readable name
+  string description = 3;       // Feature description
+  ControlFeatureConfigData config = 4;  // Feature configuration
+  string feature_data = 5;      // Optional JSON-serialized feature type params (max 64KB enforced)
+  repeated string cves = 6;     // Associated CVEs
+}
+
+message ControlFeatureConfigData {
+  optional bool enabled = 1;    // For boolean type features
+  FeatureAction action = 2;     // For action-based features
+  string params = 3;            // Additional JSON params (max 64KB enforced)
+}
+
+// Network entity type for forwarding rules
+enum NetworkEntityType {
+  NETWORK_ENTITY_TYPE_UNSPECIFIED = 0;
+  NETWORK_ENTITY_TYPE_IP = 1;
+  NETWORK_ENTITY_TYPE_RANGE = 2;
+  NETWORK_ENTITY_TYPE_DOMAIN = 3;
+}
+
+// Network entity represents a source or destination in a forwarding rule
+message NetworkEntity {
+  string entity = 1;            // The entity value (IP address, IP range, or domain)
+  NetworkEntityType type = 2;   // Type of the entity
+}
+
+// Forwarding rule data for network forwarding/NAT rules
+// These rules describe how traffic is forwarded between network entities.
+// The rule_type will be automatically prefixed with "custom_" and the integration's
+// product name to create the forwarding rule type (e.g., "custom_jamf").
+message ForwardingRuleData {
+  string rule_id = 1;                     // Unique rule identifier within this integration (required)
+  NetworkEntity source = 2;               // Source network entity (required)
+  NetworkEntity destination = 3;          // Destination network entity (required)
+  bool is_bidirectional = 4;              // Whether the rule applies in both directions
+  map<string, string> properties = 5;     // Optional custom properties for the rule
+  string raw_response = 6; // Raw HTTP response body returned by the API before parsing
+}
+
+// Control-to-target association. Targets are subnets (firewalls/IDS) and/or
+// forwarding rules (WAFs/LBs, where a policy is bound to a domain or similar
+// entity that we normalize into a forwarding rule). control_product is derived
+// from the integration type at normalize time (matching ControlData). Records
+// with the same control_id are aggregated by the normalizer; subnet_cidrs must
+// be flat IPv4 CIDRs and forwarding_rule_ids must match the rule_id of a
+// ForwardingRuleData emitted via collect_forwarding_rule.
+message ControlAssociationData {
+  string control_id = 1;                   // Must match the control_id emitted via collect_control.
+  ControlType control_type = 2;            // Must match the type used in collect_control for this control_id.
+  repeated string subnet_cidrs = 3;        // Flat IPv4 CIDRs only; 0.0.0.0/0 and non-IPv4 are dropped.
+  repeated string forwarding_rule_ids = 4; // rule_id values from forwarding rules this control protects (WAF/LB).
+}
+
+// HttpErrorDetails holds structured HTTP error info that scripts can report.
+message HttpErrorDetails {
+  string error = 1;
+  int32 status_code = 2;
+  string url = 3;
+  string response_body = 4;
+}
+
+// TestAndSaveResponse holds the result of a starlark test_and_save call.
+message TestAndSaveResponse {
+  bool ok = 1;
+  string error = 2 [deprecated = true];
+  int32 status_code = 3 [deprecated = true];
+  string url = 4 [deprecated = true];
+  string response_body = 5 [deprecated = true];
+  HttpErrorDetails error_details = 6;
+}
+
+// MainRunResponse holds the optional result of a starlark main() call.
+// Scripts can return this to report HTTP errors encountered during the run.
+message MainRunResponse {
+  bool ok = 1;
+  HttpErrorDetails error_details = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Runtime info (per-instance) — mirrors the subset of
+// artifacts.NormalizedRawScan.Processes that downstream consumers actually
+// read (audited against instance_processor / risk_analyzer / asset_processor).
+// artifacts.Process fields not exposed here (Uptime, Namespaces, NetInfo,
+// FSPath, EngineSpecificData, LibData.Engine, LibData.Release,
+// NetConnection.{Domain,IsInbound,PortForwardInfo}) have no behavioural
+// reader — exposing them would only invite incorrect usage.
+//
+// Engine specifically is omitted because it's populated by Zafran's
+// agent-side scanners (Zazu/Wazu/Mazu) via process-memory introspection;
+// third-party API integrations have no way to set it correctly.
+// ---------------------------------------------------------------------------
+
+// SockScope: downstream filters restrict to SOCK_SCOPE_HOST. Leaving the
+// field unset means the connection won't surface as a host-scope socket.
+enum SockScope {
+  SOCK_SCOPE_UNSPECIFIED = 0;
+  SOCK_SCOPE_HOST = 1;
+  SOCK_SCOPE_NAMESPACE = 2;
+  SOCK_SCOPE_LOOPBACK = 3;
+}
+
+// ContainerSource: UNSPECIFIED maps to artifacts.NoContainer (process is
+// not containerised).
+enum ContainerSource {
+  CONTAINER_SOURCE_UNSPECIFIED = 0;
+  CONTAINER_SOURCE_DOCKER = 1;
+  CONTAINER_SOURCE_CONTAINERD = 2;
+}
+
+message Process {
+  string exe = 1;
+  string cmdline = 2;
+  MntInfo mnt_info = 3;
+  repeated LibData libs = 4;
+  repeated NetConnection net_conns = 5;
+}
+
+message LibData {
+  string path = 1;
+  string pkg = 2;
+  string version = 3;
+  repeated Component components = 4;
+}
+
+// NetConnection numeric fields use Linux syscall constants from
+// golang.org/x/sys/unix:
+//   protocol — IPPROTO_TCP=6, IPPROTO_UDP=17
+//   state    — BPF_TCP_ESTABLISHED=1, BPF_TCP_SYN_SENT=2, BPF_TCP_LISTEN=10, ...
+message NetConnection {
+  string source = 1;
+  SockScope scope = 2;
+  int32 protocol = 3;
+  int32 state = 4;
+  string local_ip = 5;
+  uint32 local_port = 6;   // proto3 has no uint16; the parser narrows to uint16.
+  string remote_ip = 7;
+  uint32 remote_port = 8;
+  // Namespace-scoped socket's host-side counterpart (recursive). risk_analyzer
+  // dereferences this to extract the host listening port for port-forwarded sockets.
+  NetConnection forwarded_host_port = 9;
+}
+
+message MntInfo {
+  string mnt_namespace_id = 1;
+  ContainerSource container_source = 2;
+  DockerInfo docker = 3;
+  ContainerdInfo containerd = 4;
+}
+
+message DockerInfo {
+  string image_id = 1;
+  string image_name = 2;
+}
+
+message ContainerdInfo {
+  string namespace = 1;
+  string image_name = 2;
+}
