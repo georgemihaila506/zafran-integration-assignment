@@ -32,6 +32,10 @@ The API client must have the following permissions:
 ./starlark-runner-mac -script crowdstrike-integration/main.star -params "api_url=https://api.crowdstrike.com,api_key=YOUR_CLIENT_ID,api_secret=YOUR_CLIENT_SECRET"
 ```
 
+```bash
+./starlark-runner-linux -script crowdstrike-integration/main.star -params "api_url=https://api.crowdstrike.com,api_key=YOUR_CLIENT_ID,api_secret=YOUR_CLIENT_SECRET"
+```
+
 ## CrowdStrike API Endpoints Used
 
 | Endpoint | Purpose |
