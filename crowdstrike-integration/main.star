@@ -146,7 +146,7 @@ def get_auth_headers(bearer_token):
 def fetch_paginated(url, bearer_token, page_size=100, items_key="resources"):
     """
     Fetch all data from a paginated API endpoint using CrowdStrike's
-    token-basel scroll pagination.
+    token-based scroll pagination.
 
     Args:
         url: API endpoint URL (without pagination params)
