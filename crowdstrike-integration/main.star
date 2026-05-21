@@ -70,7 +70,7 @@ def main(**kwargs):
             log.info("Collected instance:", instance.name)
 
 
-    # Step 3: Fetch and collect vulnerabilities for each instance
+    # Step 3: Fetch and collect vulnerabilities
     log.info("Step 3: Fetching vulnerabilities...")
     raw_vulnerabilities = fetch_vulnerabilities(api_url, bearer_token, page_size)
 
@@ -220,7 +220,6 @@ def fetch_device_details(api_url, bearer_token, device_ids):
         batch = device_ids[i:i + batch_size]
         ids = "&".join(["ids=" + _id for _id in batch])
         url = api_url + "/devices/entities/devices/v2?" + ids
-        log.info(url)
 
         response = http.get(url, headers=headers)
         if response["status_code"] != 200:
