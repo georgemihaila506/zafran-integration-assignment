@@ -76,7 +76,7 @@ The API client must have the following permissions:
 
 The integration runs in two phases:
 
-1. **Instances** — Scroll all device IDs, batch-fetch details, map to `InstanceData`, flush
+1. **Instances** — Scroll all device IDs, batch-fetch details, map to `InstanceData`
 2. **Vulnerabilities** — Paginate Spotlight combined endpoint, map to `Vulnerability`, flush
 
 Instances are flushed before vulnerabilities to ensure the link between them is preserved.
