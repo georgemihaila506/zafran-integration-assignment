@@ -17,7 +17,7 @@ A Starlark-based integration that pulls assets and vulnerabilities from CrowdStr
 | `api_url` | CrowdStrike API base URL | `https://api.crowdstrike.com` |
 | `api_key` | OAuth2 Client ID | (required) |
 | `api_secret` | OAuth2 Client Secret | (required) |
-| `page_size` | Number of items per page | `100` |
+| `page_size` | Number of items per page | `50` |
 
 ## Required CrowdStrike API Scopes
 
